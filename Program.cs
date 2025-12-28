@@ -7,6 +7,8 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddSingleton<TechBurguer_API.Services.IOrderServices, TechBurguer_API.Services.OrderService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

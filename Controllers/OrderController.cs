@@ -1,8 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using System;
-using TechBurguer_API.Entity;
-using TechBurguer_API.Enum;
 using TechBurguer_API.Models;
+using TechBurguer_API.Services;
 
 namespace TechBurguer_API.Controllers
 {
@@ -10,95 +8,67 @@ namespace TechBurguer_API.Controllers
     [ApiController]
     public class OrderController : ControllerBase
     {
-        private static readonly Dictionary<string, decimal> _burgerPrices = new()
-        {
-            { "Cheeseburger", 25.00m },
-            { "X-Burger", 20.00m },
-            { "X-Egg", 30.00m },
-            { "X-Dog", 35.00m },
-            { "X-Full", 40.00m }
-        };
+        private readonly IOrderServices _service;
 
-        private static readonly Dictionary<DrinkEnum, decimal> _drinkPrices = new()
+        public OrderController(IOrderServices service)
         {
-            { DrinkEnum.CocaCola, 8.00m },
-            { DrinkEnum.Pepsi, 8.50m },
-            { DrinkEnum.Fanta, 7.50m },
-            { DrinkEnum.Sprite, 7.50m },
-            { DrinkEnum.Water, 5.00m }
-        };
-
-        private static List<Order> _orders = new List<Order>();
+            _service = service;
+        }
 
         [HttpPost]
         public IActionResult CreateOrder([FromBody] CreateOrder request)
         {
-            if (string.IsNullOrEmpty(request.CustomerName) || request.CustomerName.Length < 3)
-                return BadRequest("Customer name must be at least 3 characters long.");
+            var order = _service.Create(request);
 
-            var newOrder = new Order
-            {
-                CustomerName = request.CustomerName,
-            };
-
-            _orders.Add(newOrder);
-
-            return CreatedAtAction(nameof(GetOrderById), new { id = newOrder.Id }, newOrder);
+            return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, order);
         }
 
         [HttpPost("{id}/items")]
         public IActionResult AddItemToOrder(Guid id, [FromBody] CreateOrderBurger request)
         {
-            var order = _orders.FirstOrDefault(o => o.Id == id);
-
-            if (order == null) return NotFound("Order not found!");
-
-            if (order.Status != OrderStatusEnum.Open)
-                return BadRequest("Cannot add items to a closed/confirmed order.");
-
-            if (!_burgerPrices.TryGetValue(request.Name, out decimal burgerPrice))
-                return BadRequest($"Burger '{request.Name}' is not on the menu!");
-
-            if (!_drinkPrices.TryGetValue(request.Drink, out decimal drinkPrice))
-                return BadRequest($"Drink '{request.Drink}' is not on the menu!");
-
-            var newItem = new Burger
+            try
             {
-                Name = request.Name,
-                Price = burgerPrice + drinkPrice
-            };
+                var order = _service.AddItem(id, request);
+                if (order == null) 
+                    return NotFound();
 
-            order.Burgers.Add(newItem);
-
-            return Ok(order);
+                return Ok(order);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
 
         [HttpGet]
         public IActionResult GetAllOrders()
         {
-            return Ok(_orders);
+            return Ok(_service.GetAll());
         }
 
         [HttpGet("{id}")]
         public IActionResult GetOrderById(Guid id)
         {
-            var order = _orders.FirstOrDefault(o => o.Id == id);
-            if (order == null) return NotFound("Order not found!");
+            var order = _service.GetById(id);
+
+            if (order == null)
+                return NotFound("Order not found");
             return Ok(order);
         }
 
         [HttpPatch("{id}/status")]
         public IActionResult UpdateOrderStatus(Guid id, [FromBody] EditOrder request)
         {
-            var order = _orders.FirstOrDefault(o => o.Id == id);
-            if (order == null) return NotFound("Order not found!");
-
-            if (request.Status == OrderStatusEnum.Confirmed && !order.Burgers.Any())
+           try
             {
-                return BadRequest("Cannot confirm an empty order. Please add items first.");
+                var sucess = _service.UpdateStatus(id, request.Status);
+                if (!sucess)
+                    return NotFound("Order not found!");
             }
-
-            order.Status = request.Status;
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
 
             return NoContent();
         }
@@ -106,10 +76,9 @@ namespace TechBurguer_API.Controllers
         [HttpDelete("{id}")]
         public IActionResult DeleteOrder(Guid id)
         {
-            var order = _orders.FirstOrDefault(o => o.Id == id);
-            if (order == null) return NotFound("Order not found!");
-
-            _orders.Remove(order);
+            var sucess = _service.Delete(id);
+            if (!sucess)
+                return NotFound("Order not found!");
             return NoContent();
         }
     }
